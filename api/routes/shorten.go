@@ -7,11 +7,10 @@ import (
 
 	"github.com/asaskevich/govalidator"
 	"github.com/go-redis/redis/v8"
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/yaikob92/url_shorten/database"
 	"github.com/yaikob92/url_shorten/helpers"
-
-	"github.com/gofiber/fiber/v2"
 )
 
 type Request struct {
@@ -29,73 +28,113 @@ type Response struct {
 }
 
 func ShortenURL(c *fiber.Ctx) error {
-	body := new(Request) // pointer to the Request struct
-	if err := c.BodyParser(&body); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "can not parse JSON"})
+	body := new(Request)
+
+	if err := c.BodyParser(body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "cannot parse JSON",
+		})
 	}
 
-	// implement rate limiting
+	// ---------------- RATE LIMIT ----------------
 	r2 := database.CreateClient(1)
 	defer r2.Close()
+
 	val, err := r2.Get(database.Ctx, c.IP()).Result()
+
 	if err == redis.Nil {
-		_ = r2.Set(database.Ctx, c.IP(), os.Getenv("API_QUOTA"), 30*60*time.Second).Err()
-	} else {
-		val, _ = r2.Get(database.Ctx, c.IP().Result())
-		valInt, _ := strconv.Atoi(val)
-
-		if valInt <= 0 {
-			limit, _ := r2.TTL(database.Ctx, c.IP()).Result()
-			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
-				"error":           "Rate limit exceeded",
-				"rate_limit_rest": limit / time.Nanosecond / time.Minute,
-			})
-		}
+		_ = r2.Set(
+			database.Ctx,
+			c.IP(),
+			os.Getenv("API_QUOTA"),
+			30*time.Minute,
+		).Err()
+		val = os.Getenv("API_QUOTA")
+	} else if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "redis error"})
 	}
 
-	// check if the input is an actual URL
+	valInt, err := strconv.Atoi(val)
+	if err != nil {
+		valInt = 0
+	}
+
+	if valInt <= 0 {
+		ttl, _ := r2.TTL(database.Ctx, c.IP()).Result()
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error":           "rate limit exceeded",
+			"rate_limit_rest": ttl.Minutes(),
+		})
+	}
+
+	// ---------------- VALIDATION ----------------
 	if !govalidator.IsURL(body.URL) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid URL"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid URL",
+		})
 	}
 
-	// check for domain error``
 	if !helpers.RemoveDomainError(body.URL) {
-		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "you can't use your own domain"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "you cannot shorten your own domain",
+		})
 	}
 
-	// enforce https, SSL
 	body.URL = helpers.EnforceHTTP(body.URL)
 
-	var id string
-
-	if body.CustomShort == "" {
+	// ---------------- SHORT ID ----------------
+	id := body.CustomShort
+	if id == "" {
 		id = uuid.New().String()[:6]
-
-	} else {
-		id = body.CustomShort
 	}
 
+	// ---------------- SAVE TO REDIS ----------------
 	r := database.CreateClient(0)
 	defer r.Close()
 
-	val, _ = r.Get(database.Ctx, id).Result()
-	if val != "" {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "URL custom short is already in use",
+	existing, err := r.Get(database.Ctx, id).Result()
+	if err != nil && err != redis.Nil {
+		return c.Status(500).JSON(fiber.Map{"error": "redis error"})
+	}
+
+	if existing != "" {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error": "short URL already exists",
 		})
 	}
 
-	if body.Expiry == 0 {
-		body.Expiry = 24
+	expiry := body.Expiry
+	if expiry == 0 {
+		expiry = 24
 	}
 
-	err = r.Set(database.Ctx, id, body.URL, body.Expiry*3600*time.Second).Err()
+	err = r.Set(
+		database.Ctx,
+		id,
+		body.URL,
+		time.Duration(expiry)*time.Hour,
+	).Err()
+
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "internal server error",
+		return c.Status(500).JSON(fiber.Map{
+			"error": "failed to save URL",
 		})
 	}
 
+	// ---------------- UPDATE RATE LIMIT ----------------
 	r2.Decr(database.Ctx, c.IP())
 
+	remaining, _ := r2.Get(database.Ctx, c.IP()).Result()
+	remainingInt, _ := strconv.Atoi(remaining)
+
+	ttl, _ := r2.TTL(database.Ctx, c.IP()).Result()
+
+	// ---------------- RESPONSE ----------------
+	return c.JSON(Response{
+		URL:            body.URL,
+		CustomShort:    os.Getenv("DOMAIN") + "/" + id,
+		Expiry:         expiry,
+		XRateRemaining: remainingInt,
+		XRateLimitRest: ttl,
+	})
 }

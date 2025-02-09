@@ -1,0 +1,65 @@
+# Binaries
+
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+
+*.test
+
+# Output of the go coverage tool
+
+*.out
+
+# Go workspace file
+
+go.work
+go.work.sum
+
+# Dependency directories (rarely used, but safe)
+
+vendor/
+
+# IDE / Editor files
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+
+.DS_Store
+Thumbs.db
+
+# Logs
+
+*.log
+
+# Environment files (IMPORTANT)
+
+.env
+
+# Build folders
+
+bin/
+dist/
+
+# Temporary files
+
+tmp/
+temp/
+
+# Node (if you mix frontend like React)
+
+node_modules/
+dist-ssr/
+
+# Coverage reports
+
+coverage/
+
+.data/

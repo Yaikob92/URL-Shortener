@@ -6,23 +6,21 @@ import (
 )
 
 func EnforceHTTP(url string) string {
-	if url[:4] != "http" {
+	if !strings.HasPrefix(url, "http") {
 		return "http://" + url
 	}
 	return url
 }
 
 func RemoveDomainError(url string) bool {
-	if url == os.Getenv("DOMAIN") {
-		return false
-	}
-	newURL = strings.Replace(url, "http://", "", 1)
-	newURL = strings.Replace(newURL, "https://", "", 1)
-	newURL = strings.Replace(newURL, "www.", "", 1)
-	newURL = strings.Split(newURL, "/")[0]
+	domain := strings.ToLower(os.Getenv("DOMAIN"))
 
-	if newURL == os.Getenv("DOMAIN") {
-		return false
-	}
-	return true
+	// normalize input URL
+	url = strings.ToLower(url)
+	url = strings.TrimPrefix(url, "http://")
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "www.")
+	url = strings.Split(url, "/")[0]
+
+	return url != domain
 }
