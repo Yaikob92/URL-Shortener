@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/asaskevich/govalidator"
-	"github.com/yaikob92/shorten-url-fiber-redis-yt/helpers"
+	"github.com/yaikob92/url_shorten/helpers"
 
 	"github.com/gofiber/fiber/v2"
 )
