@@ -8,7 +8,7 @@ import (
 func ResolveURL(c *fiber.Ctx) error {
 	url := c.Params("url")
 
-	r := database.CreateClienet(0)
+	r := database.CreateClient(0)
 	defer r.Close()
 
 	value, err := r.Get(database.Ctx, url).Result()
@@ -18,7 +18,7 @@ func ResolveURL(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
 	}
 
-	rIncr := database.CreateClienet(1)
+	rIncr := database.CreateClient(1)
 	defer rIncr.Close()
 
 	r.Incr(database.Ctx, "counter")
