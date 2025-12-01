@@ -3,8 +3,8 @@ package routes
 import (
 	"time"
 
-	"github.com/akhil/shorten-url-fiber-redis-yt/helpers"
 	"github.com/asaskevich/govalidator"
+	"github.com/yaikob92/shorten-url-fiber-redis-yt/helpers"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -23,23 +23,22 @@ type Response struct {
 	XRateLimitRest time.Duration `json:"rate_limit_rest"`
 }
 
-
-func ShortenURL(c *fiber.Ctx){
+func ShortenURL(c *fiber.Ctx) error {
 	body := new(Request) // pointer to the Request struct
-	if err := c.BodyParser(body); err != nil{
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error":"can not parse JSON"})
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "can not parse JSON"})
 	}
-	
+
 	// implement rate limiting
 
-  // check if the input is an actual URL
-	if !govalidator.IsURL(body.URL){
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error":"Invalid URL"})
+	// check if the input is an actual URL
+	if !govalidator.IsURL(body.URL) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid URL"})
 	}
 
-	// check for domain error
-	if !helpers.RemoveDomainError(body.URL){
-		c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error":""})
+	// check for domain error``
+	if !helpers.RemoveDomainError(body.URL) {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "you can't use your own domain"})
 	}
 
 	// enforce https, SSL
